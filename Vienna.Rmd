@@ -1,0 +1,110 @@
+---
+title: "Vienna"
+author: "Jack Sudds"
+date: "2024-08-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Packages}
+if (!require("pacman")) install.packages("pacman")
+library(pacman)
+p_load(
+  #Learning & Base
+  learnr, swirl, installr,
+  #File & Package Management
+  here, rio, openxlsx, renv, pacman, remotes, readxl,
+  #Data Management
+  tidyverse, linelist, naniar, parsedate, reshape2, dplyr,
+  #Stats
+  janitor, gtsummary, rstatix, broom, lmtest, easystats, skimr, spatstat,
+  #Plots
+  cowplot, RColorBrewer, ggnewscale, wesanderson, DiagrammeR, incidence2, gghighlight, ggtext, ggrepel, gganimate, ggsci, grates, gridExtra, ggforce,
+  #GIS
+  sf, tmap, spdep, rnaturalearth, rnaturalearthdata, broom, ggmap, mapdata, maps, spData, BiocManager, geoR,
+  #Reports & Dashboards
+  rmarkdown, reportfactory, officer, flexdashboard, shiny,
+  #tables
+  knitr, flextable, formattable, gt,
+  #Other
+  kableExtra, psych, BSDA, htmltools, rgl, lubridate,
+  #Testing
+  raster, dismo, terra, CCAMLRGIS, tigris, patchwork
+)
+
+#install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
+#install_github("ropensci/rnaturalearthhires")
+
+theme_set(theme_linedraw())
+```
+
+```{r import}
+FZ2011 <- read.xlsx("Vienna.xlsx", sheet = "Franks_2011")
+FZ2009 <- read.xlsx("Vienna.xlsx", sheet = "Franks_2009")
+KSArch <- read.xlsx("Vienna.xlsx", sheet = "ARCH Sample")
+```
+
+```{r tidy}
+FZ2009[c("Cull", "Individual")] <- str_split_fixed(FZ2009$Context, '-', 2)
+FZ2009[c("Individual", "Year")] <- str_split_fixed(FZ2009$Individual, "/", 2)
+WFZ2009 <- FZ2009 %>%
+  subset(NOTES != "NA") %>%
+  filter(str_detect(NOTES, "KG"))
+```
+
+```{r weights}
+dat2 <- gsub("([0-9]+)KG.*", "\\1", WFZ2009$NOTES)
+dat2
+WFZ2009$NOTES <- dat2
+Weights <- data.frame(WFZ2009$ID, WFZ2009$MWS, WFZ2009$NOTES)
+colnames(Weights) <- c("ID", "MWS", "NOTES")
+Weights$NOTES <- as.numeric(Weights$NOTES)
+ggplot(Weights, aes(x=MWS, y=NOTES)) +
+  geom_jitter()
+```
+
+
+```{r exec summary}
+Sum1 <- FZ2009 %>%
+  count(Cull)
+SCount2011 <- FZ2011[,c(1,2,4,5)]
+SCount2009 <- FZ2009[,c(1,2,3,4)]
+colnames(SCount2009) <- c("ID", "Context", "Side", "Sex")
+colnames(SCount2011) <- c("ID", "Context", "Side", "Sex")
+SCounts <- rbind(SCount2009, SCount2011)
+Sum2 <- SCounts %>%
+  count(Sex)
+```
+
+```{r ArCH processing}
+KSArch[c("Site", "Year")] <- str_split_fixed(KSArch$CTX2, " ", 2)
+
+ggplot(KSArch, aes(x = MWS, y = ..count.., fill = Site)) +
+  geom_bar() +
+  labs(
+    x = "MWS",
+    y = "Count") +
+  facet_wrap(~Site, ncol = 1, scales = "free_y")
+```
+
+```{r}
+ggplot(FZ2009, aes(x=MWS, y=..count..)) +
+  geom_bar() +
+  labs(
+    title = "2009"
+  )+
+  scale_y_continuous(expand = c(0,0))
+
+
+ggplot(FZ2011, aes(x=MWS, y=..count..)) +
+  geom_bar() +
+  labs(
+    title = "2011"
+  )+
+  scale_y_continuous(expand = c(0,0))
+
+```
+

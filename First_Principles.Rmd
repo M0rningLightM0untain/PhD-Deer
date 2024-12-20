@@ -1,0 +1,754 @@
+---
+title: "First Principles"
+author: "Jack Sudds"
+date: "2023-03-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Packages}
+if (!require("pacman")) install.packages("pacman")
+library(pacman)
+p_load(
+  #Learning & Base
+  learnr, swirl, installr,
+  #File & Package Management
+  here, rio, openxlsx, renv, pacman, remotes, readxl,
+  #Data Management
+  tidyverse, linelist, naniar, parsedate, reshape2, dplyr,
+  #Stats
+  janitor, gtsummary, rstatix, broom, lmtest, easystats, skimr, spatstat,
+  #Plots
+  cowplot, RColorBrewer, ggnewscale, wesanderson, DiagrammeR, incidence2, gghighlight, ggtext, ggrepel, gganimate, ggsci, grates, gridExtra, ggforce,
+  #GIS
+  sf, tmap, spdep, rnaturalearth, rnaturalearthdata, broom, ggmap, mapdata, maps, spData, BiocManager, geoR,
+  #Reports & Dashboards
+  rmarkdown, reportfactory, officer, flexdashboard, shiny,
+  #tables
+  knitr, flextable, formattable, gt,
+  #Other
+  kableExtra, psych, BSDA, htmltools, rgl, lubridate,
+  #Testing
+  raster, dismo, terra, CCAMLRGIS, tigris, patchwork
+)
+
+#install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
+#install_github("ropensci/rnaturalearthhires")
+
+theme_set(theme_linedraw())
+```
+
+```{r import}
+J_Rum <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Data", range = "A1:K99")
+All_Rum <- read_excel(here("Rum_All.xlsx"))
+Eruption <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Eruption")
+Wear <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Wear_Order")
+Method <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Method")
+```
+
+```{r demographics eval=FALSE}
+Demographics <- Aged_Usable_I[c(1,2,4)]
+Demographics <- Demographics %>%
+  arrange(Project_ID)
+Method_Bound <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Final_Method")
+#write.xlsx(Demographics, file = "Demographics.xlsx")
+Demographics <- read_excel(here("Demographics.xlsx"))
+Demographics <- Demographics %>%
+  count(MWS, Sex)
+
+```
+
+```{r tidying}
+colnames(J_Rum)[c(2,3,4)] <- c("Code", "FamilyName","M/F")
+#ensure capital letters made similar
+J_Rum$FamilyName = str_to_title(J_Rum$FamilyName)
+All_Rum$FamilyName = str_to_title(All_Rum$FamilyName)
+
+#merging - also removes the ones not listed in database from Andrew - Email Professor metionned
+Jack_Dataset <- merge(x=J_Rum, y=All_Rum, by.x = "Code", by.y = "Code", all.x = FALSE)
+Problem_Children <- anti_join(J_Rum, All_Rum, by = c("Code"))
+colnames(Jack_Dataset)[c(4,16)] <- c("Sex", "Sex_Code")
+```
+
+```{r months date}
+Months_Calc <- Jack_Dataset[c(2,4,6,17,18,19,20,21,22, 24, 25)]
+#remove NA - assumption day as 1st and month as middle of year
+Months_Calc <- Months_Calc %>%
+  mutate(BirthDay = coalesce(BirthDay, 1),
+         BirthMonth = coalesce(BirthMonth, 6),
+         DeathDay = coalesce(DeathDay, 1),
+         DeathMonth = coalesce(DeathMonth, 6))
+#this pile of shit converts birth and death dates into months
+Months_Calc$Birth_day <- paste(Months_Calc$BirthYear, Months_Calc$BirthMonth, Months_Calc$BirthDay, sep = "-")
+Months_Calc$Birth_day <- as.Date(Months_Calc$Birth_day)
+Months_Calc$Death_day <- paste(Months_Calc$DeathYear, Months_Calc$DeathMonth, Months_Calc$DeathDay, sep = "-")
+Months_Calc$Death_day <- as.Date(Months_Calc$Death_day)
+Months_Calc <- Months_Calc %>%
+    mutate(Birth_day = ymd(Birth_day)) %>%
+    mutate(Death_day = ymd(Death_day))
+Months_Calc <- Months_Calc %>%
+  mutate(Age_At_Death = interval(Birth_day, Death_day)%/% months(1))
+colnames(Months_Calc)[c(14)] <- c("Age_At_Death")
+Aged_Usable <- Months_Calc[c(1,2,3,14)]
+class(Months_Calc$Birth_day)
+```
+
+```{r Seperate Individuals and Mandibles}
+#Table of Individuals
+Aged_Usable_I <- Aged_Usable
+#Table of Mandibles only
+Aged_Usable$Dupe <- with(Aged_Usable, ifelse(Side == "B", 2, 1) )
+Aged_Usable_M <- Aged_Usable %>%
+  uncount(Dupe)
+```
+
+```{r subsets for Graphs 2}
+#whole years old
+Aged_Usable_M$Years_Old <- as.integer(Aged_Usable_M$Age_At_Death/12)
+#historgram prep
+Aged_Usable_M_Hist <- Aged_Usable_M %>%
+   mutate(bins  = cut(Age_At_Death, breaks = c(seq(0,228,12)))) %>%
+   count(Sex, bins) %>%
+  complete(bins, nesting(Sex), fill = list(n = 0)) %>%
+ arrange(Sex, bins)
+#make males negative for nice looking histogram
+Aged_Usable_M_Hist <- Aged_Usable_M_Hist %>%
+mutate(n = ifelse(Sex =="M", n*(-1), n*1))
+
+
+lbls <- seq(0,19,1)
+lbls <- as.character(lbls)
+#whole years old
+Aged_Usable_I$Years_Old <- as.integer(Aged_Usable_I$Age_At_Death/12)
+#historgram prep
+Aged_Usable_I_Hist <- Aged_Usable_I %>%
+   mutate(bins  = cut(Age_At_Death, breaks = c(0,12,24,36,48,60,72,84,96,108,120,132,144,156,168,180,192,204,216,228), labels = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19))) %>%
+   count(Sex, bins) %>%
+  complete(bins, nesting(Sex), fill = list(n = 0)) %>%
+ arrange(Sex, bins)
+#make males negative for nice looking histogram
+Aged_Usable_I_Hist <- Aged_Usable_I_Hist %>%
+mutate(n = ifelse(Sex =="M", n*(-1), n*1))
+
+graphing <- subset(Aged_Usable_I, Sex != "U")
+
+ggplot(Aged_Usable_I, aes(x = Sex, y=Age_At_Death, colour = Sex)) +
+  geom_violin(position = position_nudge(x=0.3)) +
+  geom_jitter(width = 0.1) +
+  theme_linedraw() +
+  labs(
+    title = "Age At Death",
+    x="Sex",
+    y="Age (Months)"
+  )
+
+ggsave("test.svg")
+
+ggplot(Aged_Usable_I, aes(x = Sex, y=Age_At_Death, colour = Sex)) +
+  geom_jitter(width = 0.2)+
+  theme_linedraw() +
+  labs(
+    title = "Age At Death",
+    
+  )
+
+ggsave("Ages.svg")
+
+ggplot(Aged_Usable_I_Hist, aes(x=bins, y=n, fill=Sex)) +
+  geom_bar(stat = "identity")+
+  theme(
+  )+ 
+  #geom_text(aes(label = n), vjust=0) +
+  coord_flip() +
+  labs(
+    title = "Population pyramid",
+    x = "Age at Death (Years)",
+    y = "Count"
+  )
+
+ggsave("pyramid.svg")
+
+ggplot(graphing, aes(x = Sex, y=Age_At_Death, colour = Sex)) +
+  geom_violin(position = position_nudge(x=0.3)) +
+  geom_jitter(width = 0.1) +
+  labs(
+    title = "Age At Death",
+    x="Sex",
+    y="Age (Months)"
+  ) +
+  scale_color_manual(values = c("#1b9e77", "#d95f02"))
+
+ggsave("update.png")
+```
+
+```{r subsets eval=FALSE}
+Data_Age <- Jack_Dataset %>%
+  count(AgeDeathYears, Sex)
+Data_Age_M <- Months_Calc %>%
+  count(Age_At_Death, Sex)
+#set male to negative for popuation pyramid
+Data_Age_M <- Data_Age_M %>%
+  mutate(n = ifelse(Sex =="M", n*(-1), n*1))
+#create bins to match dama paper
+Data_Age_B <- Data_Age_M %>%
+  mutate(bins  = cut(Age_At_Death, breaks = c(2,4,5,12,20,33,54,147,183,300)))
+#create bins for years old
+Data_Age_Y <- Data_Age_M %>%
+  mutate(bins  = cut(Age_At_Death, breaks = c(seq(0,400,12)))) %>%
+  count(Sex, bins) %>%
+  mutate(n = ifelse(Sex =="M", n*(-1), n*1))
+  
+#Data_Age_B <- Data_Age_B %>%
+  #mutate(bins = ifelse(Sex =="M", bins*(-1), n*1))
+  
+#count of mandibes in 
+Data_Age_C <- Jack_Data_Simple_L
+Data_Age_C$B <- with(Data_Age_C, ifelse(Age_At_Death <= 2, 1, 0)) 
+Data_Age_C$C <- with(Data_Age_C, ifelse(Age_At_Death >= 4 & Age_At_Death <= 5, 1, 0)) 
+Data_Age_C$D <- with(Data_Age_C, ifelse(Age_At_Death > 5 & Age_At_Death <= 12, 1, 0)) 
+Data_Age_C$E <- with(Data_Age_C, ifelse(Age_At_Death >= 13 & Age_At_Death <= 20, 1, 0)) 
+Data_Age_C$F <- with(Data_Age_C, ifelse(Age_At_Death > 20 & Age_At_Death <= 33, 1, 0)) 
+Data_Age_C$G <- with(Data_Age_C, ifelse(Age_At_Death >= 34 & Age_At_Death <= 54, 1, 0)) 
+Data_Age_C$H <- with(Data_Age_C, ifelse(Age_At_Death >= 44 & Age_At_Death <= 147, 1, 0)) 
+Data_Age_C$I <- with(Data_Age_C, ifelse(Age_At_Death >= 61 & Age_At_Death <= 183, 1, 0)) 
+Data_Age_C$J <- with(Data_Age_C, ifelse(Age_At_Death >= 118, 1, 0)) 
+
+#sums of above stages and pivot
+Age_Stages <- Data_Age_C[c(4,6,7,8,9,10,11,12,13,14)]%>%
+    group_by(Sex) %>%
+  summarise_each(list(sum))
+
+Age_Stages <- Age_Stages %>%
+  gather(key = "Stage", value = "n", 2:10) %>%
+  mutate(n = ifelse(Sex =="M", n*(-1), n*1))
+
+Counts <- Jack_Data_Simple_I %>%
+  count(Sex)
+```
+
+```{r test eval=FALSE}
+ggplot(Jack_Data_Simple_I, aes(x = "Deer", y=Age_At_Death, fill = Sex)) +
+  geom_violin() +
+  theme_classic() +
+  labs(
+    title = "Population Violins TEST"
+  )
+
+ggplot(Jack_Data_Simple_I, aes(x = Sex, y=Age_At_Death, colour = Sex)) +
+  geom_jitter(width = 0.25) +
+  theme_dark() +
+  labs(
+    title = "Age At Death Jitter"
+  )
+
+ggplot(Data_Age_M, aes(x=Age_At_Death, y=n, fill = Sex)) +
+  geom_bar(stat = "identity")+
+  coord_flip() +
+  labs(
+    title = "Population pyramid, Un-binned"
+  )
+
+ggplot(Data_Age_B, aes(x=bins, y=n, fill = Sex)) +
+  geom_histogram(stat = "identity", breaks = c(2,4,5,12,20,33,54,147,183,300))+
+  geom_text(aes(label = n), vjust=0) +
+  coord_flip() +
+  labs(
+    title = "Population pyramid, Bins"
+  )
+
+ggplot(Age_Stages, aes(y=Stage, x=n, fill = Sex)) +
+  geom_bar(stat = "identity")+
+  geom_text(aes(label = n), vjust=0) +
+  #coord_flip() +
+  labs(
+    title = "Population pyramid Stages seperate sides"
+  ) +
+  scale_x_continuous(breaks = seq(-40,40, by = 5))
+
+ggplot(Data_Age_Y, aes(x=bins, y=n, fill=Sex)) +
+  geom_bar(stat = "identity")+
+  theme(
+    panel.grid.minor.y = element_line(colour = "black")
+  )+
+  geom_text(aes(label = n), vjust=0) +
+  coord_flip() +
+  labs(
+    title = "Population pyramid Years"
+  )
+
+#ggplot(Jack_Data_Simple, aes(x=Sex, y = ..count..)) +
+  #geom_bar() 
+```
+
+```{r Wear Pattern}
+Wear <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Wear_Order")
+JD_Temp <- Months_Calc[c(1,14)]
+
+#Tidy (make into RD_JS0XX format)
+
+Wear$Dp4_Stage <- as.character(Wear$Dp4_Stage)
+Wear$P4_Stage <- as.character(Wear$P4_Stage)
+Wear$M1_Stage <- as.character(Wear$M1_Stage)
+Wear$M2_Stage <- as.character(Wear$M2_Stage)
+Wear$M3_Stage <- as.character(Wear$M3_Stage)
+
+Wear$Dp4 <- str_pad(Wear$Dp4, 2, pad = "0")
+Wear$Dp4 <- paste0("RD_JS0", Wear$Dp4)
+
+Wear$P4 <- str_pad(Wear$P4, 2, pad = "0")
+Wear$P4 <- paste0("RD_JS0", Wear$P4)
+
+Wear$M1 <- str_pad(Wear$M1, 2, pad = "0")
+Wear$M1 <- paste0("RD_JS0", Wear$M1)
+
+Wear$M2 <- str_pad(Wear$M2, 2, pad = "0")
+Wear$M2 <- paste0("RD_JS0", Wear$M2)
+
+Wear$M3 <- str_pad(Wear$M3, 2, pad = "0")
+Wear$M3 <- paste0("RD_JS0", Wear$M3)
+
+#Separate, Add Ages, Order
+WearDp4 <- Wear[c(1,2,3)]
+WearDp4 <- merge(x=WearDp4, y=JD_Temp, by.x = "Dp4", by.y = "Project_ID")
+WearDp4 <- WearDp4[c(2,1,4,3)]
+
+WearP4 <- Wear[c(1,4,5)]
+WearP4 <- merge(x=WearP4, y=JD_Temp, by.x = "P4", by.y = "Project_ID")
+WearP4 <- WearP4[c(2,1,4,3)]
+
+WearM1 <- Wear[c(1,6,7)]
+WearM1 <- merge(x=WearM1, y=JD_Temp, by.x = "M1", by.y = "Project_ID")
+WearM1 <- WearM1[c(2,1,4,3)]
+
+WearM2 <- Wear[c(1,8,9)]
+WearM2 <- merge(x=WearM2, y=JD_Temp, by.x = "M2", by.y = "Project_ID")
+WearM2 <- WearM2[c(2,1,4,3)]
+
+WearM3 <- Wear[c(1,10,11)]
+WearM3 <- merge(x=WearM3, y=JD_Temp, by.x = "M3", by.y = "Project_ID")
+WearM3 <- WearM3[c(2,1,4,3)]
+
+#make basic all data
+JD_Temp$Age_At_Death <- sort(JD_Temp$Age_At_Death, decreasing = FALSE)
+JD_Temp$obs <- 1:nrow(JD_Temp)
+
+#Test graphs
+ggplot(WearDp4, aes(x=1, y=Age_At_Death, color = Dp4_Stage)) +
+  geom_jitter(width = 0.25) +
+  geom_text(aes(label = Dp4),hjust=0,vjust=0) +
+  coord_cartesian(xlim = c(0,2))
+
+ggplot(WearP4, aes(x=1, y=Age_At_Death, color = P4_Stage)) +
+  geom_jitter(width = 0.25) +
+  coord_cartesian(xlim = c(0,2))
+
+ggplot(WearM1, aes(x=1, y=Age_At_Death, color = M1_Stage)) +
+  geom_jitter(width = 0.25) +
+  coord_cartesian(xlim = c(0,2))
+
+ggplot(WearM2, aes(x=1, y=Age_At_Death, color = M2_Stage)) +
+  geom_jitter(width = 0.25) +
+  coord_cartesian(xlim = c(0,2))
+
+ggplot(WearM3, aes(x=1, y=Age_At_Death, color = M3_Stage)) +
+  geom_jitter(width = 0.25) +
+  coord_cartesian(xlim = c(0,2))
+
+```
+
+```{r Test graphs for wear eval=FALSE}
+#graphs with un-erupted
+ggplot(WearDp4, aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+ggplot(WearP4, aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+ggplot(WearM1, aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+ggplot(WearM2, aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+ggplot(WearM3, aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+ggplot(JD_Temp, aes(x=obs, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+#graphs with my groups
+ggplot(subset(WearDp4, Dp4_Stage != 0), aes(x=Order, y=Age_At_Death, color = Dp4_Stage)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+ggplot(subset(WearP4, P4_Stage != 0), aes(x=Order, y=Age_At_Death, color = P4_Stage)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+ggplot(subset(WearM1, M1_Stage >= 1), aes(x=Order, y=Age_At_Death, color = M1_Stage)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+ggplot(subset(WearM2, M2_Stage >= 1), aes(x=Order, y=Age_At_Death, color = M2_Stage)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+ggplot(subset(WearM3, M3_Stage >= 1), aes(x=Order, y=Age_At_Death, color = M3_Stage)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+#graphs without groups
+ggplot(subset(WearDp4, Dp4_Stage != 0), aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+ggsave("Dp4_temp.jpg")
+ggplot(subset(WearP4, P4_Stage != 0), aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+ggplot(subset(WearM1, M1_Stage >= 1), aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+ggplot(subset(WearM2, M2_Stage >= 1), aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+ggplot(subset(WearM3, M3_Stage >= 1), aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+```
+
+```{r Dp4}
+
+WearDp4_Present <- subset(WearDp4, Dp4_Stage != 0)
+
+ggplot(WearDp4, aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+ggplot(subset(WearDp4, Dp4_Stage != 0), aes(x=Order, y=Age_At_Death, color = Dp4_Stage)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+ggplot(subset(WearDp4, Dp4_Stage != 0), aes(x=Order, y=Age_At_Death)) +
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+summary(lm(WearDp4_Present$Age_At_Death ~ WearDp4_Present$Order))
+
+ggplot(WearDp4_Present, aes(x=1, y=Age_At_Death, color = Dp4_Stage)) +
+  geom_jitter(width = 0.25) +
+  coord_cartesian(xlim = c(0,2))
+
+
+ggplot(WearDp4_Present, aes(x=Order, y=Age_At_Death, fill = Dp4_Stage)) +
+  geom_boxplot()
+
+```
+
+```{r P4}
+#Prep and add order by age
+WearP4_Present <- subset(WearP4, P4_Stage != 0)
+WearP4_Absent <- subset(WearP4, P4_Stage <= 0)
+#remove error
+WearP4_Present <- WearP4_Present[WearP4_Present$P4 != "RD_JS072", ]
+
+ggplot(WearP4_Present, aes(x=Order, y = Age_At_Death))+
+  geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+
+ggplot(WearP4_Present, aes(x=1, y=Age_At_Death, color = P4_Stage)) +
+  geom_jitter(width = 0.25) +
+  coord_cartesian(xlim = c(0,2))
+
+ggplot(WearP4_Present, aes(x=Order, y=Age_At_Death, fill = P4_Stage)) +
+  geom_boxplot()
+
+```
+
+```{r M1}
+#Prep
+WearM1_Present <- subset(WearM1, M1_Stage !=0)
+WearM1_Absent <- subset(WearM1, M1_Stage < 1)
+WearM1_Present <- WearM1_Present[!(WearM1_Present$M1 %in% c("RD_JS070", "RD_JS004", "RD_JS074", "RD_JS076","RD_JS007")),]
+
+
+#graphs
+M1_Means <- WearM1_Present %>%
+  group_by(M1_Stage) %>%
+  summarise(across(Order:Age_At_Death, mean))
+ggplot()+
+  theme_classic() +
+  geom_point(WearM1_Present, mapping = aes(x=Order, y = Age_At_Death, color = M1_Stage)) +
+  geom_point(data = M1_Means, mapping = aes(x=Order, y=Age_At_Death), col="red", shape = 24) +
+  geom_line(data = M1_Means, mapping = aes(x=Order, y=Age_At_Death), col="red") +
+    geom_smooth(WearM1_Present, mapping = aes(x=Order, y = Age_At_Death, color = M1_Stage), method=lm, se=FALSE)
+  #geom_label_repel(aes(label = M1, x=Order, y = Age_At_Death, fontface = "bold"), angle=45)
+ggsave("M1.jpg", scale = 3)
+
+ggplot(WearM1_Present, aes(x=1, y=Age_At_Death, color = M1_Stage)) +
+  geom_jitter(width = 0.25) +
+  coord_cartesian(xlim = c(0,2))
+
+ggplot(WearM1_Present, aes(x=Order, y=Age_At_Death, fill = M1_Stage)) +
+  geom_boxplot()
+  
+```
+
+```{r M2}
+#Import, Tidy, Remove Outliers
+WearM2_Present <- subset(WearM2, M2_Stage >= 1)
+WearM2_Absent <- subset(WearM2, M2_Stage < 1)
+WearM2_Absent <- WearM2_Absent[!(WearM2_Absent$M2 %in% c("RD_JS065", "RD_JS047")),]
+
+#Sort Absent ones
+WearM2_Absent <- WearM2_Absent[order(WearM2_Absent$M2_Stage, WearM2_Absent$Age_At_Death),]
+WearM2_Absent <- WearM2_Absent %>%
+  mutate(WearM2_Absent, Order = row_number())
+
+
+#Graphs
+ggplot(WearM2_Absent, aes(x=Order, y=Age_At_Death, color=M2_Stage))+
+  geom_point()
+  #geom_smooth(method = lm, se=FALSE)
+
+ggplot(WearM2_Present, aes(x=Order, y=Age_At_Death, color=M2_Stage))+
+  geom_point()+
+  geom_smooth(method = lm, se=FALSE)
+
+#Erupting concept graph
+M2_MeansA <- WearM2_Absent %>%
+  group_by(M2_Stage) %>%
+  summarise(across(Order:Age_At_Death, mean))
+
+ggplot()+
+  theme_classic() +
+  geom_point(WearM2_Absent, mapping = aes(x=Order, y = Age_At_Death, color = M2_Stage)) +
+  geom_point(data = M2_MeansA, mapping = aes(x=Order, y=Age_At_Death), col="red", shape = 24) +
+  geom_line(data = M2_MeansA, mapping = aes(x=Order, y=Age_At_Death), col="red") +
+    geom_smooth(WearM2_Absent, mapping = aes(x=Order, y = Age_At_Death, color = M2_Stage), method=lm, se=FALSE)
+
+
+ggplot(WearM1_Present, aes(x=Order, y=Age_At_Death, fill = M1_Stage)) +
+  geom_boxplot()
+```
+
+```{r M3}
+#Import, Tidy, Remove Outliers
+WearM3_Present <- subset(WearM3, M3_Stage >= 1)
+WearM3_Absent <- subset(WearM3, M3_Stage < 1)
+WearM3_Present <- WearM3_Present[!(WearM3_Present$M3 %in% c("RD_JS013")),]
+
+
+ggplot(WearM3_Present, aes(x=Order, y=Age_At_Death, color=M3_Stage))+
+  geom_point()+
+  geom_smooth(method = lm, se=FALSE)
+
+#by age M3
+WearM3_Present_O <- WearM3_Present[order(WearM3_Present$M3_Stage, WearM3_Present$Age_At_Death),]
+WearM3_Present_O <- WearM3_Present_O %>%
+  mutate(WearM3_Present_O, Order = row_number())
+
+ggplot(WearM3_Present_O, aes(x=Order, y=Age_At_Death, color=M3_Stage))+
+  geom_point()+
+  geom_smooth(method = lm, se=FALSE)
+
+
+ggplot(WearM3_Present, aes(x=Order, y=Age_At_Death, fill = M3_Stage)) +
+  geom_boxplot()
+```
+
+```{r Wear Methodology}
+Method <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Method")
+JD_Temp <- Months_Calc[c(1,14)]
+JD_Temp$obs <- NULL
+
+#Tidy (make into RD_JS0XX format)
+
+Method$Dp4 <- as.character(Method$Dp4)
+Method$P4 <- as.character(Method$P4)
+Method$M1 <- as.character(Method$M1)
+Method$M2 <- as.character(Method$M2)
+Method$M3 <- as.character(Method$M3)
+
+Method$Dp4 <- str_pad(Method$Dp4, 2, pad = "0")
+Method$Dp4 <- paste0("RD_JS0", Method$Dp4)
+
+Method$P4 <- str_pad(Method$P4, 2, pad = "0")
+Method$P4 <- paste0("RD_JS0", Method$P4)
+
+Method$M1 <- str_pad(Method$M1, 2, pad = "0")
+Method$M1 <- paste0("RD_JS0", Method$M1)
+
+Method$M2 <- str_pad(Method$M2, 2, pad = "0")
+Method$M2 <- paste0("RD_JS0", Method$M2)
+
+Method$M3 <- str_pad(Method$M3, 2, pad = "0")
+Method$M3 <- paste0("RD_JS0", Method$M3)
+
+#tidy
+Method[Method=="RD_JS0NA"]<- NA
+#Method[is.na(Method)] <- 0
+Method$Wear_Stage <- as.factor(Method$Wear_Stage)
+Method$n <- as.factor(Method$n)
+Method$M3_Age <- as.numeric(Method$M3_Age)
+MethodDp4 <- Method[c(1,2,3,4)]
+MethodP4 <- Method[c(1,2,5,6)]
+MethodM1 <- Method[c(1,2,7,8)]
+MethodM2 <- Method[c(1,2,9,10)]
+MethodM3 <- Method[c(1,2,11,12)]
+
+ggplot(Method) +
+  geom_point(aes(x=n, y=Dp4_Age, color="Dp4", size = 2), shape=15)+
+  geom_point(aes(x=n, y=P4_Age, color="P4", size = 2), shape=16)+
+  geom_point(aes(x=n, y=M1_Age, color="M1", size = 2), shape=17)+
+  geom_point(aes(x=n, y=M2_Age, color="M2", size = 2), shape=18)+
+  geom_point(aes(x=n, y=M3_Age, color="M3", size = 2), shape=13)+
+  theme(
+    panel.grid.minor.x = element_line("grey")
+  )+
+  guides(
+    size = "none"
+  )+
+  labs(
+    x="Age Stage",
+    y="Age (Months)",
+    colour = "Tooth"
+  )+
+  scale_x_discrete(labels = unique(Method$Wear_Stage)) +
+  scale_y_continuous(expand = c(0,5), breaks = seq(0,250,10))+
+  coord_cartesian(ylim = c(0,250))
+
+ggsave("Stages.jpg")
+
+#check col type
+#sapply(Method, class)
+```
+
+```{r RD_JS Method creation}
+DD <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Method_v2")
+
+ggplot() +
+  geom_point(DD, mapping = aes(x = MWS, y=DD_Min, color = "red")) +
+  geom_line(DD, mapping = aes(x = MWS, y=DD_Min, group = 1, color = "red")) +
+  geom_point(DD, mapping = aes(x = MWS, y=DD_Max, color = "blue"))+
+  geom_line(DD, mapping = aes(x = MWS, y=DD_Max, group = 1, color = "blue")) +
+  theme_minimal()
+  labs(
+    y = "Age",
+    color = "Age"
+  ) +
+  scale_y_continuous(expand = c(0,5), breaks = seq(0,250,10)) +
+  coord_cartesian(ylim = c(0,250))
+  ggsave("Dama.jpg")
+
+  ggplot(Method) +
+  geom_point(aes(x=n, y=Dp4_Age, color="Dp4", size = 2), shape=15)+
+  geom_point(aes(x=n, y=P4_Age, color="P4", size = 2), shape=16)+
+  geom_point(aes(x=n, y=M1_Age, color="M1", size = 2), shape=17)+
+  geom_point(aes(x=n, y=M2_Age, color="M2", size = 2), shape=18)+
+  geom_point(aes(x=n, y=M3_Age, color="M3", size = 2), shape=13)+
+  theme_minimal() +
+  guides(
+    size = "none"
+  )+
+  labs(
+    x="Age Stage",
+    y="Age (Months)",
+    colour = "Tooth"
+  )+
+  scale_x_discrete(labels = unique(Method$Wear_Stage)) +
+  scale_y_continuous(expand = c(0,5), breaks = seq(0,250,10))+
+  coord_cartesian(ylim = c(0,250))
+  ggsave("Working_Method.jpg")
+```
+
+```{r method analysis}
+MTable <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Table_2")
+Test <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Method_Test")
+
+Boundaries <- merge(x=Aged_Usable, y=Test, by.x = "Project_ID", by.y = "Project_ID")
+Boundaries <- Boundaries[c(1,11,4)]
+
+Bound_Sum <- tapply(Boundaries$Age_At_Death, Boundaries$`Wear Stage`, summary)
+
+```
+
+```{r Method Test}
+#Import
+TestData_Good <- read_excel(here("RD_JS.xlsx"), sheet = "Testing", range = "A1:A23")
+TestData_Dirty <- read_excel(here("RD_JS.xlsx"), sheet = "Testing", range = "B1:B23")
+TestData <- read_excel(here("RD_JS.xlsx"), sheet = "Testing", range = "C1:C19")
+Calibrated <- read_excel(here("NMS Mandibles.xlsx"), sheet = "Method_Test", range = "A1:G99")
+Calibrated <- Calibrated[c(1,7)]
+Ages <- Aged_Usable[c(1,4)]
+
+#Code Fixing
+TestData_Good$Good_Samples <- as.character(TestData_Good$Good_Samples)
+TestData_Dirty$Dirty_Samples <- as.character(TestData_Dirty$Dirty_Samples)
+TestData$Final_Set <- as.character(TestData$Final_Set)
+TestData_Good$Good_Samples <- str_pad(TestData_Good$Good_Samples, 2, pad = "0")
+TestData_Good$Good_Samples <- paste0("RD_JS0", TestData_Good$Good_Samples)
+TestData_Dirty$Dirty_Samples <- str_pad(TestData_Dirty$Dirty_Samples, 2, pad = "0")
+TestData_Dirty$Dirty_Samples <- paste0("RD_JS0", TestData_Dirty$Dirty_Samples)
+TestData$Final_Set <- str_pad(TestData$Final_Set, 2, pad = "0")
+TestData$Final_Set <- paste0("RD_JS0", TestData$Final_Set)
+
+#Add Stage & Age
+TD_Good <- merge(x=TestData_Good, y=Calibrated, by.x = "Good_Samples", by.y = "Project_ID")
+TD_Dirty <- merge(x=TestData_Dirty, y=Calibrated, by.x = "Dirty_Samples", by.y = "Project_ID")
+TD_Good <- merge(x=TD_Good, y=Ages, by.x = "Good_Samples", by.y ="Project_ID", all.y = FALSE)
+TD_Dirty <- merge(x=TD_Dirty, y=Ages, by.x = "Dirty_Samples", by.y = "Project_ID")
+TestData <- merge(x=TestData, y=Calibrated, by.x = "Final_Set", by.y = "Project_ID", all.x = TRUE)
+TestData <- merge(x=TestData, y=Ages, by.x = "Final_Set", by.y ="Project_ID", all.x = TRUE)
+
+writexl::write_xlsx(TestData, here("TestData.xlsx"))
+Export <- Months_Calc[c(1,14)]
+write.xlsx(Export, here("Rework_Data.xlsx"))
+```
+
+```{r 1st test - Code Dumping Ground}
+#Import
+Draft_one <- lapply(excel_sheets("Post_Grad_Test.xlsx"), function(x)
+read_excel("Post_Grad_Test.xlsx", sheet = x, range = "A1:F10")
+)
+
+
+#Graveyard
+#names(Draft_one) <- c("RD_JS001", "RD_JS005", "RD_JS008", "RD_JS016", "RD_JS046", "RD_JS050", "RD_JS058", "RD_JS063")
+
+#Accuracy <- lapply(Draft_one, ((count(Draft_one[Draft_one$Wear_Stage == filter(Draft_one, Draft_one$Individual=="CONTROL")$Wear_Stage,])-1)/8)*100)
+
+#testing
+#RD_JS001_Test <- read_excel(here("Post_Grad_Test.xlsx"), sheet = "RD_JS001")
+#Test_Accuracy <- ((count(Draft_one[Draft_one$Wear_Stage == subset(Draft_one[[6]]=="CONTROL")$Wear_Stage,])-1)/8)*100
+#Test_Accuracy <- ((count(RD_JS001_Test[RD_JS001_Test$Wear_Stage == filter(RD_JS001_Test, RD_JS001_Test$Individual=="CONTROL")$Wear_Stage,])-1)/8)*100
+#Test_Accuracy <- count(RD_JS001_Test$Wear_Stage)
+#t <- filter(RD_JS001_Test, Individual=="CONTROL")$Wear_Stage
+
+#Import percentages
+Draft_percent <- read_excel(here("Post_Grad_Test.xlsx"), sheet = "Percentages", range = "A1:C17")
+
+Draft_percent$ID <- str_pad(Draft_percent$ID, 2, pad = "0")
+Draft_percent$ID <- paste0("RD_JS0", Draft_percent$ID)
+
+Draft_percent_r <- pivot_wider(Draft_percent, names_from = ID, values_from = Percent)%>%
+  remove_rownames %>% 
+  column_to_rownames(var="var")
+
+ggplot() +
+    geom_col(filter(Draft_percent, var == "Within 1"), mapping = aes(y=Percent, x=ID, fill = "Within 1"), position = position_dodge())+
+  geom_col(filter(Draft_percent, var == "Exact"), mapping = aes(y=Percent, x=ID, fill = "Exact"), position = position_dodge())+
+  theme_minimal() +
+  labs(
+    x="Sample",
+    y="Percent accuracy"
+  )
+```
+
+```{r}
+Checking <- Months_Calc[,c(1,14)]
+```

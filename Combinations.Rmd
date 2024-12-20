@@ -1,0 +1,100 @@
+---
+title: "Combinations"
+author: "Jack Sudds"
+date: "2024-09-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+#ONLY ONCE EVERYTHING ELSE HAS BEEN GONE THROUGH
+knitr::opts_chunk$set(echo = TRUE)
+if (!require("pacman")) install.packages("pacman")
+library(pacman)
+p_load(
+  #Learning & Base
+  learnr, swirl, installr,
+  #File & Package Management
+  here, rio, openxlsx, renv, pacman, remotes, readxl,
+  #Data Management
+  tidyverse, linelist, naniar, parsedate, reshape2, dplyr,
+  #Stats
+  janitor, gtsummary, rstatix, broom, lmtest, easystats, skimr, spatstat,
+  #Plots
+  cowplot, RColorBrewer, ggnewscale, wesanderson, DiagrammeR, incidence2, gghighlight, ggtext, ggrepel, gganimate, ggsci, grates, gridExtra, ggforce,
+  #GIS
+  sf, tmap, spdep, rnaturalearth, rnaturalearthdata, broom, ggmap, mapdata, maps, spData, BiocManager, geoR,
+  #Reports & Dashboards
+  rmarkdown, reportfactory, officer, flexdashboard, shiny,
+  #tables
+  knitr, flextable, formattable, gt,
+  #Other
+  kableExtra, psych, BSDA, htmltools, rgl, lubridate,
+  #Testing
+  raster, dismo, terra, CCAMLRGIS, tigris, patchwork
+)
+
+#install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
+#install_github("ropensci/rnaturalearthhires")
+
+theme_set(theme_linedraw())
+```
+
+```{r Archaeo imports}
+Viennese <- read.xlsx("Vienna.xlsx", sheet = "ARCH Sample")
+Viennese[c("Site", "Year")] <- str_split_fixed(Viennese$CTX2, " ", 2)
+Viennese <- Viennese %>%
+  janitor::clean_names()
+Viennese <- Viennese[,c(1,14,15)]
+colnames(Viennese) <- c("ID", "MWS", "Site")
+
+CardiffCH <- read_excel(here("Cardiff.xlsx"), sheet = "Cardiff Archaeological", range = "A1:W133")
+CardiffCH <- CardiffCH %>%
+  janitor::clean_names()
+CardiffCH <- CardiffCH[,c(1,15,22)]
+colnames(CardiffCH) <- c("ID", "Site", "MWS")
+
+CardiffB <- read_excel(here("Cardiff.xlsx"), sheet = "Bournais")
+CardiffB <- CardiffB %>%
+  janitor::clean_names()
+CardiffB <- CardiffB[,c(1,18)]
+CardiffB <- CardiffB %>%
+  cbind(site="Bournais")
+colnames(CardiffB) <- c("ID", "MWS", "Site")
+
+Dept <- read.xlsx("data.xlsx", sheet = "Exeter")
+Dept <- Dept %>%
+  janitor::clean_names()
+Dept <- Dept[,c(1,2,11)]
+colnames(Dept) <- c("ID", "Site", "MWS")
+
+Poly <- read.xlsx("data.xlsx", sheet = "Poly")
+Poly <- Poly %>%
+  janitor::clean_names()
+Poly <- Poly[,c(1,2,11)]
+colnames(Poly) <- c("ID", "Site", "MWS")
+
+Rhum <- read.xlsx(here("NMS Mandibles.xlsx"), sheet = "Method_Test")
+Rhum <- Rhum %>%
+  janitor::clean_names()
+Rhum <- Rhum[,c(1,7)]
+Rhum <- Rhum %>%
+  cbind(site="Rum Modern")
+colnames(Rhum) <- c("ID", "MWS", "Site")
+
+All_Archaeo_Ages <- rbind(Viennese, CardiffB, CardiffCH, Dept, Poly, Rhum)
+All_Archaeo_Ages <- All_Archaeo_Ages[complete.cases(All_Archaeo_Ages),]
+```
+
+```{r Visualising}
+
+ggplot(All_Archaeo_Ages, aes(x = MWS, y = ..count.., fill = Site)) +
+  geom_bar() +
+  theme_linedraw() +
+  labs(
+    x = "MWS",
+    y = "Count") +
+  facet_wrap(~Site, scales = "free_y")
+
+ggsave("All_Archaeo_Ages.jpg", width = 10, height = 10, limitsize = FALSE)
+```
+

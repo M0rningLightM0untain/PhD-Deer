@@ -1,0 +1,76 @@
+---
+title: "BDS"
+output: html_document
+date: "2023-10-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Packages}
+if (!require("pacman")) install.packages("pacman")
+library(pacman)
+p_load(
+  #Learning
+  learnr, swirl, 
+  #File & Package Management
+  here, rio, openxlsx, renv, pacman, remotes, readxl,
+  #Data Management
+  tidyverse, linelist, naniar, parsedate,
+  #Stats
+  janitor, gtsummary, rstatix, broom, lmtest, easystats, skimr, 
+  #Plots
+  cowplot, RColorBrewer, ggnewscale, wesanderson, DiagrammeR, incidence2, gghighlight, ggtext, ggrepel, gganimate, ggsci, grates,
+  #GIS
+  sf, tmap, spdep, rnaturalearth, rnaturalearthdata, rnaturalearthhires, broom, rgeos, ggmap, rgdal, maptools, mapdata, maps, spData, BiocManager, 
+  #Reports & Dashboards
+  rmarkdown, reportfactory, officer, flexdashboard, shiny,
+  #tables
+  knitr, flextable, formattable,
+  #Other
+  kableExtra, psych, BSDA, htmltools, rgl, lubridate
+)
+
+#install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
+#install_github("ropensci/rnaturalearthhires")
+
+theme_set(theme_linedraw())
+```
+
+```{r import & tidy}
+BDS_Survey <- read_excel(here("BDS_CSurvey.xlsx"), range = "A8:AJ291")
+LATLONG <- read_excel(here("BDS_CSurvey.xlsx"), sheet = "Sheet2")
+world <- ne_countries(scale = "medium", returnclass = "sf")
+UK <- ne_countries(country = "united kingdom",scale = "large", returnclass = "sf")
+class(world)
+
+BDS_Survey <- BDS_Survey[,-c(6,7)]
+BDS_Red <- BDS_Survey[c(1,2,3,4,5,6)]
+BDS_Red <- BDS_Red[complete.cases(BDS_Red[,6]),]
+BDS_Counts <- BDS_Red %>%
+  count(COUNTY)
+```
+
+```{r map}
+BDS_Mapping <- merge(x=BDS_Red, y=LATLONG, by.x = "POSTCODE", by.y = "Address", all.x = FALSE)
+BDS_Mapping <- BDS_Mapping[,-c(9,10)]
+BDS_Mapping <- BDS_Mapping[BDS_Mapping$Latitude != "FAILED",]
+BDS_Mapping$Latitude <- as.numeric(BDS_Mapping$Latitude)
+BDS_Mapping$Longitude <- as.numeric(BDS_Mapping$Longitude)
+
+
+ggplot(UK) +
+  geom_sf() +
+  coord_sf() +
+  labs(color = "Type") +
+  theme_bw() +
+  xlab("Longitude") + ylab("Latitude") +
+  coord_sf(xlim = c(-8, 2), ylim = c(49.8, 59), expand = FALSE) +
+  geom_point(data = BDS_Mapping, aes(x = Longitude, y= Latitude, color = STATUS))
+
+ggsave("kept.jpeg")
+
+
+```
+

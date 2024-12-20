@@ -1,0 +1,279 @@
+---
+title: "Miscellaneous"
+author: "Jack Sudds"
+date: "2024-04-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Packages}
+if (!require("pacman")) install.packages("pacman")
+library(pacman)
+p_load(
+  #Learning & Base
+  learnr, swirl, installr,
+  #File & Package Management
+  here, rio, openxlsx, renv, pacman, remotes, readxl,
+  #Data Management
+  tidyverse, linelist, naniar, parsedate, reshape2, dplyr,
+  #Stats
+  janitor, gtsummary, rstatix, broom, lmtest, easystats, skimr, spatstat,
+  #Plots
+  cowplot, RColorBrewer, ggnewscale, wesanderson, DiagrammeR, incidence2, gghighlight, ggtext, ggrepel, gganimate, ggsci, grates, gridExtra, ggforce,
+  #GIS
+  sf, tmap, spdep, rnaturalearth, rnaturalearthdata, broom, ggmap, mapdata, maps, spData, BiocManager, geoR,
+  #Reports & Dashboards
+  rmarkdown, reportfactory, officer, flexdashboard, shiny,
+  #tables
+  knitr, flextable, formattable, gt,
+  #Other
+  kableExtra, psych, BSDA, htmltools, rgl, lubridate,
+  #Testing
+  raster, dismo, terra, CCAMLRGIS, tigris, patchwork
+)
+
+#install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
+#install_github("ropensci/rnaturalearthhires")
+
+theme_set(theme_linedraw())
+```
+
+```{r eruption table}
+erupt <- read.xlsx("data.xlsx", sheet = "Eruption Table")
+```
+
+
+```{r Star Carr Database eval=FALSE}
+SC_DB <- read.csv("Star_Carr.csv")
+SC_DB_MAN <- filter(SC_DB, ART_TYPE == "Mandible")
+SC_DB_RD <- filter(SC_DB_MAN, SPECIES == "Cervidae"|SPECIES == "Cervus elaphus")
+SC_DB_RD <- SC_DB_RD[c(1,3,4,8,9,10)]
+write.xlsx(SC_DB_RD, "Star_Carr_RDMand.xlsx")
+```
+
+```{r quick eval=FALSE}
+Poly <- read_excel(here("data.xlsx"), sheet = "Poly")
+Exe <- read_excel(here("data.xlsx"), sheet = "Exeter")
+Cladh_Hallen <- read_excel(here("Cardiff.xlsx"), sheet = "Cardiff Archaeological", range = "A1:W133")
+Bournais <- read_excel(here("Cardiff.xlsx"), sheet = "Bournais")
+Cardiff_Modern <- read_excel(here("Cardiff.xlsx"), sheet = "Cardiff Modern")
+
+Cladh_Hallen <- Cladh_Hallen %>%
+  janitor::clean_names()
+Bournais <- Bournais %>%
+  janitor::clean_names()
+Cardiff_Modern <- Cardiff_Modern %>%
+  janitor::clean_names()
+
+PolyF <- Poly %>%
+  count(MWS) %>%
+  add_row(MWS = "C", n = 0)
+PolyF <- with(PolyF, PolyF[order(MWS),])
+ExeF <- Exe %>%
+  count(MWS, Site)
+Cladh_HallenF <- Cladh_Hallen %>%
+  count(mws) %>%
+  slice(-c(10))
+BournaisF <- Bournais %>%
+  count(mws) %>%
+  slice(-c(10))
+Cardiff_ModernF <- Cardiff_Modern %>%
+  count(mws)
+
+
+ggplot(PolyF, aes(x=MWS, y=n, fill = MWS)) +
+  geom_col() +
+  geom_text(aes(label = n, y=1)) +
+  labs(
+    title = "Historic England"
+  ) +
+  scale_y_continuous(expand = c(0,0))
+
+ggplot(ExeF, aes(x=MWS, y=n, fill = Site)) +
+  geom_col() +
+  geom_text(aes(label = n, y=1)) +
+  labs(
+    title = "Department"
+  )
+
+ggplot(Cladh_HallenF, aes(x=mws, y=n, fill = mws)) +
+         geom_col() +
+  geom_text(aes(label = n, y=1)) +
+  labs(
+    title = "Cladh Hallen"
+  )
+ggplot(Cardiff_ModernF, aes(x=mws, y=n, fill = mws)) +
+         geom_col()+
+  geom_text(aes(label = n, y=1)) +
+  labs(
+    title = "Cardiff Modern"
+  )
+ggplot(BournaisF, aes(x=mws, y=n, fill = mws)) +
+         geom_col()+
+  geom_text(aes(label = n, y=1)) +
+  labs(
+    title = "Bournais"
+  )
+
+```
+
+```{r Poly Final eval=FALSE}
+
+
+MWSTable <- data.frame(MWS = c("A", "B", "C", "D", "E", "F", "G", "H", "I"),
+                       Age_Min = c(0,5,7,12,24,30,61,86,154),
+                       Age_Max = c(5,7,12,24,30,61,86,154,"-"))
+
+ggplot(PolyF, aes(x=MWS, y=n, fill = MWS)) +
+  geom_col() +
+  theme(
+    plot.title = element_markdown(hjust = 0.5),
+    plot.subtitle = element_markdown(hjust = 0.5),
+        panel.background = element_rect(fill = 'white'),
+        panel.grid.major.x = element_line(color = 'gray'),
+        panel.grid.major.y = element_line(color = 'gray'),
+        axis.line = element_line(color = "black"),
+        panel.grid.minor.x = element_line(color = 'gray'),
+        panel.grid.minor.y = element_line(color = 'light gray'),
+    legend.position = "bottom",
+    legend.justification = "center"
+  ) +
+  guides(fill = "none")+
+  labs(
+    title = "Historic England Deer Sample",
+    subtitle = "Using Sudds Red Deer Dental Aging Method",
+    y = "Count",
+    x = "Mandible Wear Stage (MWS)"
+  ) +
+  annotation_custom(tableGrob(MWSTable, rows=NULL, theme = ttheme_default(base_size = 9)), xmin = "C", xmax = "E", ymin = 2, ymax = 7) +
+  scale_fill_brewer(palette = "Set1") +
+  scale_y_continuous(expand = c(0,0))
+
+ggsave("Cervus Ages Sudds.tiff")
+```
+
+```{r method test final eval=FALSE}
+RD_JS_T <- data.frame(Percentage = c("Exact Match", "One Stage Different"),
+                      MWS = c(92.06,100),
+                      Dp4 = c(81.48,92.59),
+                      P4 = c(75,86.11),
+                      M1 = c(58.73,77.78),
+                      M2 = c(82.54, 92.06),
+                      M3 = c(62.22, 95.56),
+                      Average = c(70.94, 88.03)
+)
+
+D_RD_JS <- read_excel("Demographics.xlsx")
+D_RD_JS_c <- D_RD_JS %>%
+  count(Sex, MWS) %>%
+  pivot_wider(names_from = MWS, values_from = n) %>%
+  select(sort(names(.))) %>%
+  relocate(Sex) %>%
+  adorn_totals("row") %>%
+  adorn_totals("col") %>%
+  replace(is.na(.), 0)
+
+Reliability_Test <- RD_JS_T
+Demographics_Table <- D_RD_JS_c
+
+R_Tab <- qflextable(Reliability_Test) %>%
+  align(j = c("MWS", "Dp4", "P4", "M1", "M2", "M3", "Average"), align = c("center"), part = "all") %>%
+  italic(i = 1, part = "header") %>%
+  bold(j = c("Percentage"), part = "all") %>%
+  vline(j = c('Percentage', 'M3'), part = "all") %>%
+  border_outer(part = "all") %>%
+  bg(j = c("MWS", "Dp4", "P4", "M1", "M2", "M3", "Average"), bg = scales::col_numeric(palette = "viridis", domain = c(0, 100)), part = "body")
+  
+D_Tab <- qflextable(Demographics_Table) %>%
+  bold(j = c("Sex"), part = "all") %>%
+  vline(j = c('Sex', 'I'), part = "all") %>%
+  align(j = c("A", "B", "C", "D", "E", "F", "G", "H", "I"), align = c("center"), part = "all") %>% 
+  border_outer(part = "all")
+
+save_as_image(D_Tab, here("Demographics.jpg"))
+save_as_image(R_Tab, here("Reliability.jpg"))
+
+D_Tab
+R_Tab
+
+RD_JS_T <- RD_JS_T %>%
+  tibble::column_to_rownames("Percentage")
+#formattable(Reliability_Test)
+#formattable(Demographics_Table)
+```
+
+```{r another table eval=FALSE}
+Da_Table <- data.frame(MWS = c("A) Birth-5 months", "B) 5-7 months", "C) 7-12 months", "D) 12-24 months", "E) 24-30 months", "F) 30-61 months", "G) 61-86 months", "H) 86-154 months", "I) 154 months and above", "Total"),
+                       Sample_n = c(1,13,27,6,1,9,12,12,13,94),
+                       Clair_Castle = c("","","","","","",2,1,"",3),
+                       Faccombe_Netherton = c(2,"","","","",1,1,"",2,6),
+                       Sicily = c("","",1,"",1,4,1,1,"",8),
+                       Cladh_Hallen = c(21,6,6,1,2,11,4,5,3,59),
+                       Bournais = c(7,2,4,1,1,8,6,5,5,39),
+                       Modern_Cardiff = c("",1,2,"","",1,2,2,"",8))
+
+Da_Tabol <- qflextable(Da_Table) %>%
+  align(j = c("MWS")) %>%
+  align(i = c("right"), part = "all") %>%
+  hline(i= c(10)) %>%
+  vline(j = c("MWS"), part = "all") %>%
+  bold(i = 1, part = "header") %>%
+  bold(j = c("MWS"), part = "all") %>%
+  align(j = c("Sample_n", "Clair_Castle", "Faccombe_Netherton", "Sicily", "Cladh_Hallen", "Bournais", "Modern_Cardiff"), align = c("center"), part = "all")
+
+
+```
+
+```{r another another table eval=FALSE}
+Tabl <- read_excel("data.xlsx", sheet = "Tabl")
+
+Tabl %>%
+  gt()
+```
+
+```{r eval=FALSE}
+S_Help <- data.frame(Yr = c(2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024),
+                      FieldSchool = c(39,38,34,37,35,51,49,44,53,59,53),
+                       UG_Dissertation = c(27,32,34,32,40,34,50,39,35,39,55),
+                       BioArch_Dissertation = c(NA, NA, 11,08,10,18,16,10,14,12,18),
+                     Themes = c(NA, 82,85,80,88,85,84,71,84,90, 59),
+                     PracticalSkills = c(NA,27,31,30,35,35,24,29,36,29, 24),
+                     ForensicPracticals = c(16, 18, 15, 21, 22, 25, 17, 23, 23, 19, 23),
+                     ForensicAnth = c(30, 30, 37, 31, 37, 32, 27, 27, 35, 41, 23),
+                     ForensicArch = c(20, 20, 21, 24, 26, 21, 24, 22, 29, 25, 30),
+                     MolecularSci = c(NA, NA, NA, 26, 17, 28, 30, 20, 14, 30, 22),
+                     ArchaeologicalSci = c(NA, NA, NA, NA, NA, NA, NA, NA, 11, 13, 20))
+
+S_Help2 <- data.frame(Yr = c("2019/2020", "2020/2021", "2021/2022", "2022/2023", "2023/2024"),
+                      UGDissHelp = c(5,4,4,7,9),
+                      ClusterMarketHours = c(NA,54844,59302,62413,90700))
+
+S_Help <- melt(S_Help, id.vars = "Yr", variable.name = "Module", value.name = "Students")
+S_Help2 <- melt(S_Help2, id.vars = "Yr", value.name = "Count")
+
+ggplot(S_Help, aes(x=Yr, y=Students, fill = Module)) +
+  geom_col() +
+  geom_smooth(method='lm') +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_y_continuous(expand = c(0,0))+
+  scale_x_continuous(breaks = seq(2014, 2024, 1))+
+  facet_wrap(~Module, scales = "free_y")
+
+ggsave("shelpfull.png")
+
+ggplot(S_Help2, aes(x=Yr, y=Count, fill = variable)) +
+  geom_col() +
+  geom_smooth(method='lm') +
+  theme(
+    legend.position = "none") +
+  scale_y_continuous(expand = c(0,0))+
+  facet_wrap(~variable, scales = "free")
+
+ggsave("shelpfull2.png")
+
+```

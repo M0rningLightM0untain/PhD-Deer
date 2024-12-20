@@ -1,0 +1,202 @@
+---
+title: "Mortality profile"
+author: "Jack Sudds"
+date: "2024-01-09"
+output: html_document
+---
+
+```{r Packages}
+if (!require("pacman")) install.packages("pacman")
+library(pacman)
+p_load(
+  #Learning & Base
+  learnr, swirl, installr,
+  #File & Package Management
+  here, rio, openxlsx, renv, pacman, remotes, readxl,
+  #Data Management
+  tidyverse, linelist, naniar, parsedate, reshape2, dplyr,
+  #Stats
+  janitor, gtsummary, rstatix, broom, lmtest, easystats, skimr, spatstat,
+  #Plots
+  cowplot, RColorBrewer, ggnewscale, wesanderson, DiagrammeR, incidence2, gghighlight, ggtext, ggrepel, gganimate, ggsci, grates, gridExtra, ggforce,
+  #GIS
+  sf, tmap, spdep, rnaturalearth, rnaturalearthdata, broom, ggmap, mapdata, maps, spData, BiocManager, geoR,
+  #Reports & Dashboards
+  rmarkdown, reportfactory, officer, flexdashboard, shiny,
+  #tables
+  knitr, flextable, formattable, gt,
+  #Other
+  kableExtra, psych, BSDA, htmltools, rgl, lubridate,
+  #Testing
+  raster, dismo, terra, CCAMLRGIS, tigris, patchwork
+)
+
+#install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
+#install_github("ropensci/rnaturalearthhires")
+
+theme_set(theme_linedraw())
+```
+
+```{r} 
+#import
+Mort_RUM <- read_excel(here("Rum_All.xlsx"))
+Profile_Attempt <- read_excel(here("Rum_All.xlsx"), sheet = "Herd_Structure")
+```
+
+```{r}
+#subset
+Mort_Known <- Mort_RUM[c(1,2,3,4,5,6,15,16)]
+Mort_Known$DeathType <- replace_na(Mort_Known$DeathType, "U")
+N_Mort_Known <- Mort_Known %>%
+  filter(DeathType == "N")
+NU_Mort_Known <- Mort_Known %>%
+  filter(DeathType == "N"|DeathType == "U")
+S_Mort_Known <- Mort_Known %>%
+    filter(DeathType == "S")
+
+N_Mort_Known <- subset(N_Mort_Known, (!is.na(N_Mort_Known[,7])))
+NU_Mort_Known <- subset(NU_Mort_Known, (!is.na(NU_Mort_Known[,7])))
+S_Mort_Known <- subset(S_Mort_Known, (!is.na(S_Mort_Known[,7])))
+
+counts <- Mort_Known %>%
+  count(DeathType)
+```
+
+```{r}
+#working
+NU_Mort_Known$Months <- NU_Mort_Known$AgeDeathYearsMonths*12
+N_Mort_Known$Months <- N_Mort_Known$AgeDeathYearsMonths*12
+
+
+Profile_working <- NU_Mort_Known %>%
+  group_by(Months) %>%
+  count()
+
+Profile_working <- Profile_working %>%
+  arrange(desc(Months))
+Profile_working$profile <- cumsum(Profile_working$n)
+Profile_working <- Profile_working %>%
+  arrange(Months)
+Profile_working$Percent <- ((Profile_working$profile/sum(Profile_working$n))*100)
+
+#shot
+S_Mort_Known$Months <- S_Mort_Known$AgeDeathYearsMonths*12
+
+S_Profile_working <- S_Mort_Known %>%
+  group_by(Months) %>%
+  count()
+
+S_Profile_working <- S_Profile_working %>%
+  arrange(desc(Months))
+S_Profile_working$profile <- cumsum(S_Profile_working$n)
+S_Profile_working <- S_Profile_working %>%
+  arrange(Months)
+S_Profile_working$Percent <- ((S_Profile_working$profile/sum(S_Profile_working$n))*100)
+
+S_Profile_Attempt <- Profile_Attempt
+Profile_Attempt$Attempt <- Profile_working$Percent[match(Profile_Attempt$Month, Profile_working$Months)] 
+S_Profile_Attempt$Attempt <- S_Profile_working$Percent[match(S_Profile_Attempt$Month, S_Profile_working$Months)]  
+
+```
+
+```{r sex based age at death}
+sex_death <- N_Mort_Known
+sex_death$Sex[sex_death$Sex == "1"] <- "F"
+sex_death$Sex[sex_death$Sex == "2"] <- "M"
+sex_death$Sex[sex_death$Sex == "3"] <- "U"
+
+sex_death_profile <- sex_death %>%
+  group_by(Months, Sex) %>%
+  count()
+
+sex_death_profile$n[sex_death_profile$Sex == "M"] <- (sex_death_profile$n*-1)
+
+ggplot(sex_death_profile, aes(y=n, x=Months, fill = Sex)) +
+  geom_bar(stat = "identity")
+```
+
+
+```{r}
+#Natural graph
+ggplot(Profile_Attempt, aes(x=Month)) +
+  geom_bar(aes(x=Month, y=100, fill = Deer_Seasons), stat = "identity", width = 1, alpha = 0.3) +
+  geom_line(data = subset(Profile_Attempt, !is.na(Attempt)), aes(y=Attempt), stat = "identity", color = "#fdb462", size = 2) +
+    geom_point(data = subset(Profile_Attempt, !is.na(Attempt)), aes(y=Attempt), stat = "identity", color = "#fdb462", size = 2) +
+  geom_line(data = subset(Profile_Attempt, !is.na(Payne_Milk)), aes(x = Month, y = Payne_Milk), stat = "identity", size = 1, color = "#990000") +
+    geom_point(data = subset(Profile_Attempt, !is.na(Payne_Milk)), aes(x = Month, y = Payne_Milk), stat = "identity", size = 1.5, colour = "#990000") +
+  geom_line(data = subset(Profile_Attempt, !is.na(Payne_Meat)), aes(x = Month, y = Payne_Meat), stat = "identity", size = 1, color = "#000080") +
+    geom_point(data = subset(Profile_Attempt, !is.na(Payne_Meat)), aes(x = Month, y = Payne_Meat), stat = "identity", size = 1.5, colour = "#000080") +
+  geom_line(data = subset(Profile_Attempt, !is.na(Payne_Meat)), aes(x = Month, y = Payne_Wool), stat = "identity", size = 1, color = "#8f9a07") +
+    geom_point(data = subset(Profile_Attempt, !is.na(Payne_Meat)), aes(x = Month, y = Payne_Wool), stat = "identity", size = 1.5, colour = "#8f9a07") +
+  theme(
+    plot.title = element_markdown(hjust = 0.5),
+    plot.subtitle = element_markdown(hjust = 0.5),
+        panel.background = element_rect(fill = 'white'),
+        panel.grid.major.x = element_line(color = 'gray'),
+        panel.grid.major.y = element_line(color = 'gray'),
+        axis.line = element_line(color = "black"),
+        panel.grid.minor.x = element_line(color = 'gray'),
+        panel.grid.minor.y = element_line(color = 'light gray'),
+    legend.position = "bottom",
+    legend.justification = "center"
+  ) +
+  labs(
+    x = "Months",
+    y = "% Survival",
+    title = "Age Profile of Rum Red Deer Natural Deaths (Orange)",
+    subtitle = "Payne 1973 *Ovicaprid* Models (Milk = Red / Meat = Blue / Wool = Green)",
+    fill = "Approximate Seasons from Rut and Gestation Period"
+  ) +
+  scale_y_continuous(expand = c(0,0),
+                     limits = c(0,100),
+                     breaks = seq(0,100, by = 10)) +
+  scale_x_continuous(expand = c(0,0),
+                     limits = c(0,72),
+                     breaks = seq(0,72,by = 4)) +
+  scale_fill_manual(values = c("#8dd3c7", "#ffffb3", "#bebada", "#fb8072"))
+
+ggsave("naturalRumDeaths.jpg")
+
+```
+
+```{r}
+ggplot(S_Profile_Attempt, aes(x=Month)) +
+  geom_bar(aes(x=Month, y=100, fill = Deer_Seasons), stat = "identity", width = 1, alpha = 0.3) +
+  geom_line(data = subset(S_Profile_Attempt, !is.na(Attempt)), aes(y=Attempt), stat = "identity", color = "#fdb462", size = 2) +
+    geom_point(data = subset(S_Profile_Attempt, !is.na(Attempt)), aes(y=Attempt), stat = "identity", color = "#fdb462", size = 2) +
+  geom_line(data = subset(S_Profile_Attempt, !is.na(Payne_Milk)), aes(x = Month, y = Payne_Milk), stat = "identity", size = 1, color = "#990000") +
+    geom_point(data = subset(S_Profile_Attempt, !is.na(Payne_Milk)), aes(x = Month, y = Payne_Milk), stat = "identity", size = 1.5, colour = "#990000") +
+  geom_line(data = subset(S_Profile_Attempt, !is.na(Payne_Meat)), aes(x = Month, y = Payne_Meat), stat = "identity", size = 1, color = "#000080") +
+    geom_point(data = subset(S_Profile_Attempt, !is.na(Payne_Meat)), aes(x = Month, y = Payne_Meat), stat = "identity", size = 1.5, colour = "#000080") +
+  geom_line(data = subset(S_Profile_Attempt, !is.na(Payne_Meat)), aes(x = Month, y = Payne_Wool), stat = "identity", size = 1, color = "#8f9a07") +
+    geom_point(data = subset(S_Profile_Attempt, !is.na(Payne_Meat)), aes(x = Month, y = Payne_Wool), stat = "identity", size = 1.5, colour = "#8f9a07") +
+  theme(
+    plot.title = element_markdown(hjust = 0.5),
+    plot.subtitle = element_markdown(hjust = 0.5),
+        panel.background = element_rect(fill = 'white'),
+        panel.grid.major.x = element_line(color = 'gray'),
+        panel.grid.major.y = element_line(color = 'gray'),
+        axis.line = element_line(color = "black"),
+        panel.grid.minor.x = element_line(color = 'gray'),
+        panel.grid.minor.y = element_line(color = 'light gray'),
+    legend.position = "bottom",
+    legend.justification = "center"
+  ) +
+  labs(
+    x = "Months",
+    y = "% Survival",
+    title = "Age Profile of Rum Red Deer Shot Deaths (Orange)",
+    subtitle = "Payne 1973 *Ovicaprid* Models (Milk = Red / Meat = Blue / Wool = Green)",
+    fill = "Approximate Seasons from Rut and Gestation Period"
+  ) +
+  scale_y_continuous(expand = c(0,0),
+                     limits = c(0,100),
+                     breaks = seq(0,100, by = 10)) +
+  scale_x_continuous(expand = c(0,0),
+                     limits = c(0,72),
+                     breaks = seq(0,72,by = 4)) +
+  scale_fill_manual(values = c("#8dd3c7", "#ffffb3", "#bebada", "#fb8072"))
+
+ggsave("ShotRumDeaths.jpg")
+```
+

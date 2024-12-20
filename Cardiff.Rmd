@@ -1,0 +1,321 @@
+---
+title: "Cardiff"
+author: "Jack Sudds"
+date: "2024-02-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Packages}
+if (!require("pacman")) install.packages("pacman")
+library(pacman)
+p_load(
+  #Learning & Base
+  learnr, swirl, installr,
+  #File & Package Management
+  here, rio, openxlsx, renv, pacman, remotes, readxl,
+  #Data Management
+  tidyverse, linelist, naniar, parsedate, reshape2, dplyr,
+  #Stats
+  janitor, gtsummary, rstatix, broom, lmtest, easystats, skimr, spatstat,
+  #Plots
+  cowplot, RColorBrewer, ggnewscale, wesanderson, DiagrammeR, incidence2, gghighlight, ggtext, ggrepel, gganimate, ggsci, grates, gridExtra, ggforce,
+  #GIS
+  sf, tmap, spdep, rnaturalearth, rnaturalearthdata, broom, ggmap, mapdata, maps, spData, BiocManager, geoR,
+  #Reports & Dashboards
+  rmarkdown, reportfactory, officer, flexdashboard, shiny,
+  #tables
+  knitr, flextable, formattable, gt,
+  #Other
+  kableExtra, psych, BSDA, htmltools, rgl, lubridate,
+  #Testing
+  raster, dismo, terra, CCAMLRGIS, tigris, patchwork
+)
+
+#install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
+#install_github("ropensci/rnaturalearthhires")
+
+theme_set(theme_linedraw())
+```
+
+```{r Start eval=FALSE}
+Cardiff <- read_excel(here("Cardiff.xlsx"))
+colnames(Cardiff)[c(13)] <- c("Element")
+
+ggplot(Cardiff, aes(x = Element, y=..count.., fill = Element)) +
+  theme(
+    axis.text.x = element_text(angle = 90)
+  ) +
+  labs(
+    title = "Cladh Hallen (Bronze Age)",
+    subtitle = "South Uist, Outer Hebrides"
+  ) +
+  geom_bar() +
+  geom_text(stat='count', aes(label=..count..)) +
+  labs(
+    x="Element",
+    y="Count"
+  ) 
+
+ggplot(Cardiff, aes(x = Area, y=..count.., fill = Element)) +
+  theme(
+    axis.text.x = element_text(angle = 90)
+  ) +
+  labs(
+    title = "Cladh Hallen (Bronze Age)",
+    subtitle = "South Uist, Outer Hebrides"
+  ) +
+  geom_bar() +
+  #geom_text(stat='count', aes(label=..count..)) +
+  labs(
+    x="Area",
+    y="Count"
+  ) +
+scale_y_continuous(expand = c(0,0))
+```
+
+```{r Import & tidy}
+Cladh_Hallen <- read_excel(here("Cardiff.xlsx"), sheet = "Cardiff Archaeological", range = "A1:W133")
+Bournais <- read_excel(here("Cardiff.xlsx"), sheet = "Bournais")
+Cardiff_Modern <- read_excel(here("Cardiff.xlsx"), sheet = "Cardiff Modern")
+
+Cladh_Hallen <- Cladh_Hallen %>%
+  janitor::clean_names()
+Bournais <- Bournais %>%
+  janitor::clean_names()
+Cardiff_Modern <- Cardiff_Modern %>%
+  janitor::clean_names()
+
+```
+
+```{r export}
+Bournais_Temp <- Bournais %>%
+  subset(mws != "NA")
+Bournais_Temp <- Bournais_Temp[c(1,2,3,4,11,13,14,15,16,17,18)]
+
+Cladh_Temp <- Cladh_Hallen %>%
+  subset(mws != "NA")
+Cladh_Temp <- Cladh_Temp[c(2,3,4,5,6,7,14,17,18,19,20,21,22)]
+
+Cardiff_Modern_Temp <- Cardiff_Modern[c(2,3,4,5,6,7,8)]
+
+xl_list <- list("Cladh Hallen" = Cladh_Temp, "Bournais" = Bournais_Temp, "Modern" = Cardiff_Modern_Temp)
+write.xlsx(xl_list, file = "Jack Cardiff Work.xlsx", rowNames=FALSE)
+```
+
+
+```{r quick graphs}
+
+ggplot(subset(Cladh_Hallen, mws != "NA"), aes(x=mws, y=..count..)) +
+         geom_bar() +
+  labs(
+    title = "Cladh Hallen"
+  )
+ggplot(subset(Cardiff_Modern, mws != "NA"), aes(x=mws, y=..count..)) +
+         geom_bar()+
+  labs(
+    title = "Cardiff Modern"
+  )
+ggplot(subset(Bournais, mws != "NA"), aes(x=mws, y=..count..)) +
+         geom_bar()+
+  labs(
+    title = "Bournais"
+  )
+```
+
+```{r Rum Profile} 
+#import
+Mort_RUM <- read_excel(here("Rum_All.xlsx"))
+Profile_Attempt <- read_excel(here("Rum_All.xlsx"), sheet = "Herd_Structure")
+
+#subset
+Mort_Known <- Mort_RUM[c(1,2,3,4,5,6,15,16)]
+Mort_Known$DeathType <- replace_na(Mort_Known$DeathType, "U")
+N_Mort_Known <- Mort_Known %>%
+  filter(DeathType == "N")
+NU_Mort_Known <- Mort_Known %>%
+  filter(DeathType == "N"|DeathType == "U")
+S_Mort_Known <- Mort_Known %>%
+    filter(DeathType == "S")
+
+N_Mort_Known <- subset(N_Mort_Known, (!is.na(N_Mort_Known[,7])))
+NU_Mort_Known <- subset(NU_Mort_Known, (!is.na(NU_Mort_Known[,7])))
+S_Mort_Known <- subset(S_Mort_Known, (!is.na(S_Mort_Known[,7])))
+
+counts <- Mort_Known %>%
+  count(DeathType)
+
+#working
+NU_Mort_Known$Months <- NU_Mort_Known$AgeDeathYearsMonths*12
+N_Mort_Known$Months <- N_Mort_Known$AgeDeathYearsMonths*12
+
+
+Profile_working <- NU_Mort_Known %>%
+  group_by(Months) %>%
+  count()
+
+Profile_working <- Profile_working %>%
+  arrange(desc(Months))
+Profile_working$profile <- cumsum(Profile_working$n)
+Profile_working <- Profile_working %>%
+  arrange(Months)
+Profile_working$Percent <- ((Profile_working$profile/sum(Profile_working$n))*100)
+
+#shot
+S_Mort_Known$Months <- S_Mort_Known$AgeDeathYearsMonths*12
+
+S_Profile_working <- S_Mort_Known %>%
+  group_by(Months) %>%
+  count()
+
+S_Profile_working <- S_Profile_working %>%
+  arrange(desc(Months))
+S_Profile_working$profile <- cumsum(S_Profile_working$n)
+S_Profile_working <- S_Profile_working %>%
+  arrange(Months)
+S_Profile_working$Percent <- ((S_Profile_working$profile/sum(S_Profile_working$n))*100)
+
+S_Profile_Attempt <- Profile_Attempt
+Profile_Attempt$Attempt <- Profile_working$Percent[match(Profile_Attempt$Month, Profile_working$Months)] 
+S_Profile_Attempt$Attempt <- S_Profile_working$Percent[match(S_Profile_Attempt$Month, S_Profile_working$Months)]  
+
+```
+
+```{r fancyer work}
+Cladh_Temp <- Cladh_Hallen %>%
+  count(mws)
+Cardiff_Modern_Temp <- Cardiff_Modern %>%
+  count(mws)
+Bournais_Temp <- Bournais %>%
+  count(mws)
+
+Cladh_Temp_M <- Cladh_Hallen %>%
+  filter(anat == 41) %>%
+  count(mws)
+Cladh_Temp_M <- Cladh_Temp_M[-c(10),]
+Bournais_Temp_M <- Bournais %>%
+  filter(anat == 41) %>%
+  count(mws)
+Bournais_Temp_M <- Bournais_Temp_M[-c(9),]
+Bournais_Temp_M[nrow(Bournais_Temp_M)+1,] = list("I", 0)
+
+Cardiff_Work <- merge(Cladh_Temp, Bournais_Temp, by = "mws", all = TRUE)
+Cardiff_Work <- merge(Cardiff_Work, Cardiff_Modern_Temp, all = TRUE)
+colnames(Cardiff_Work)[c(1,2,3,4)] <- c("MWS", "Cladh_Hallen", "Bournais", "Modern")
+Cardiff_Work <- Cardiff_Work[-c(10), ]
+Cardiff_Work[,c(5)] <- c("5", "7", "12", "24", "30", "61", "86", "154", "250")
+Cardiff_Work[,c(5)] <- as.numeric(Cardiff_Work[,c(5)])
+Cardiff_Work$CHM <- Cladh_Temp_M$n
+Cardiff_Work$BM <- Bournais_Temp_M$n
+
+#set up mortality profile
+Cardiff_Work <- Cardiff_Work %>%
+  arrange(desc(MWS))
+Cardiff_Work$CH_Profile <- cumsum(Cardiff_Work$Cladh_Hallen)
+Cardiff_Work$CH_Percent <- ((Cardiff_Work$CH_Profile/sum(Cardiff_Work$Cladh_Hallen))*100)
+Cardiff_Work$B_Profile <- cumsum(Cardiff_Work$Bournais)
+Cardiff_Work$B_Percent <- ((Cardiff_Work$B_Profile/sum(Cardiff_Work$Bournais))*100)
+Cardiff_Work$CHM_Profile <- cumsum(Cardiff_Work$CHM)
+Cardiff_Work$CHM_Percent <- ((Cardiff_Work$CHM_Profile/sum(Cardiff_Work$CHM))*100)
+Cardiff_Work$BM_Profile <- cumsum(Cardiff_Work$BM)
+Cardiff_Work$BM_Percent <- ((Cardiff_Work$BM_Profile/sum(Cardiff_Work$BM))*100)
+Cardiff_Work$M_Profile <- cumsum(Cardiff_Work$Modern)
+Cardiff_Work <- Cardiff_Work %>%
+  arrange(MWS)
+
+#Percents
+#write.xlsx(S_Profile_working, file = "Working.xlsx")
+Rum_Percent <- read_excel(here("Working.xlsx"), range = "G1:H10")
+Cardiff_Work$CHP <- ((Cardiff_Work$Cladh_Hallen/sum(Cardiff_Work$Cladh_Hallen))*100)
+Cardiff_Work$BP <- ((Cardiff_Work$Bournais/sum(Cardiff_Work$Bournais))*100)
+Cardiff_Work$CHMP <- ((Cardiff_Work$CHM/sum(Cardiff_Work$CHM))*100)
+Cardiff_Work$BMP <- ((Cardiff_Work$BM/sum(Cardiff_Work$BM))*100)
+Rum_Percent$Percent <- ((Rum_Percent$n/sum(Rum_Percent$n))*100)
+CWP <- Cardiff_Work[c(1,17,18)]
+CWP$RP <- Rum_Percent$Percent
+CWP <- CWP %>%
+  gather(Site, Percent, CHP:BP)
+CWMP <- Cardiff_Work[c(1,19,20)]
+CWMP <- CWMP %>%
+  gather(Site, Percent, CHMP:BMP)
+ggplot(CWP, aes(MWS, Percent, fill = Site)) +
+  geom_bar(stat = "identity", position = 'dodge') +
+  guides(
+   fill = FALSE
+  ) +
+  labs(
+    title = "Percentage of Individuals in each stage",
+    subtitle = "Cladh Hallen (Blue), Bournais (Red)"
+  )
+ggsave("Percentage Survival All.jpg")
+ggplot(CWMP, aes(MWS, Percent, fill = Site)) +
+  geom_bar(stat = "identity", position = 'dodge') +
+  guides(
+    fill = FALSE
+  ) +
+  labs(
+    title = "Percentage of Mandibles in each stage",
+    subtitle = "Cladh Hallen (Blue), Bournais (Red)"
+  )
+ggsave("Percentage Survival Mandibles.jpg")
+
+#Profile Graph
+ggplot(Cardiff_Work, aes(x=V5)) +
+  geom_line(aes(y=CH_Percent), stat = "identity", color = "#990000", size = 2) +
+    geom_point(aes(y=CH_Percent), stat = "identity", color = "#990000", size = 2) +
+  geom_line(aes(y=B_Percent), stat = "identity", color = "#000080", size = 2) +
+    geom_point(aes(y=B_Percent), stat = "identity", color = "#000080", size = 2) +
+  geom_line(data = subset(Profile_Attempt, !is.na(Attempt)), aes(x = Month, y=Attempt), stat = "identity", color = "#fdb462", size = 2) +
+    geom_point(data = subset(Profile_Attempt, !is.na(Attempt)), aes(x = Month, y=Attempt), stat = "identity", color = "#fdb462", size = 2) +
+  theme(
+    plot.title = element_markdown(hjust = 0.5),
+    plot.subtitle = element_markdown(hjust = 0.5),
+        panel.background = element_rect(fill = 'white'),
+        panel.grid.major.x = element_line(color = 'gray'),
+        panel.grid.major.y = element_line(color = 'gray'),
+        axis.line = element_line(color = "black"),
+        panel.grid.minor.x = element_line(color = 'gray'),
+        panel.grid.minor.y = element_line(color = 'light gray'),
+    legend.position = "bottom",
+    legend.justification = "center"
+  ) +
+  labs(
+    x = "Age Stage",
+    y = "% Survival",
+    title = "Age Profile of Cladh Hallen (Red) & Bournais (Blue) Red Deer",
+    subtitle = "Compared to Natural die off pattern from Rum (Orange)"
+) 
+ggsave("Age Profile All.jpg")
+
+ggplot(Cardiff_Work, aes(x=V5)) +
+  geom_line(aes(y=CHM_Percent), stat = "identity", color = "#990000", size = 2) +
+    geom_point(aes(y=CHM_Percent), stat = "identity", color = "#990000", size = 2) +
+  geom_line(aes(y=BM_Percent), stat = "identity", color = "#000080", size = 2) +
+    geom_point(aes(y=BM_Percent), stat = "identity", color = "#000080", size = 2) +
+  geom_line(data = subset(Profile_Attempt, !is.na(Attempt)), aes(x = Month, y=Attempt), stat = "identity", color = "#fdb462", size = 2) +
+    geom_point(data = subset(Profile_Attempt, !is.na(Attempt)), aes(x = Month, y=Attempt), stat = "identity", color = "#fdb462", size = 2) +
+  theme(
+    plot.title = element_markdown(hjust = 0.5),
+    plot.subtitle = element_markdown(hjust = 0.5),
+        panel.background = element_rect(fill = 'white'),
+        panel.grid.major.x = element_line(color = 'gray'),
+        panel.grid.major.y = element_line(color = 'gray'),
+        axis.line = element_line(color = "black"),
+        panel.grid.minor.x = element_line(color = 'gray'),
+        panel.grid.minor.y = element_line(color = 'light gray'),
+    legend.position = "bottom",
+    legend.justification = "center"
+  ) +
+  labs(
+    x = "Age Stage",
+    y = "% Survival",
+    title = "Age Profile of Cladh Hallen (Red) & Bournais (Blue) Red Deer Mandibles",
+    subtitle = "Compared to Natural die off pattern from Rum (Orange)"
+) 
+ggsave("Age Profile Mandibles.jpg")
+
+```
+

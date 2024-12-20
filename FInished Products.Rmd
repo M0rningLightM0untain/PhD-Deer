@@ -1,0 +1,128 @@
+---
+title: "Final Graphs"
+output: html_document
+date: "2023-11-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Packages}
+if (!require("pacman")) install.packages("pacman")
+library(pacman)
+p_load(
+  #Learning & Base
+  learnr, swirl, installr,
+  #File & Package Management
+  here, rio, openxlsx, renv, pacman, remotes, readxl,
+  #Data Management
+  tidyverse, linelist, naniar, parsedate, reshape2, dplyr,
+  #Stats
+  janitor, gtsummary, rstatix, broom, lmtest, easystats, skimr, spatstat,
+  #Plots
+  cowplot, RColorBrewer, ggnewscale, wesanderson, DiagrammeR, incidence2, gghighlight, ggtext, ggrepel, gganimate, ggsci, grates, gridExtra, ggforce,
+  #GIS
+  sf, tmap, spdep, rnaturalearth, rnaturalearthdata, broom, ggmap, mapdata, maps, spData, BiocManager, geoR,
+  #Reports & Dashboards
+  rmarkdown, reportfactory, officer, flexdashboard, shiny,
+  #tables
+  knitr, flextable, formattable, gt,
+  #Other
+  kableExtra, psych, BSDA, htmltools, rgl, lubridate,
+  #Testing
+  raster, dismo, terra, CCAMLRGIS, tigris, patchwork
+)
+
+#install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
+#install_github("ropensci/rnaturalearthhires")
+
+theme_set(theme_linedraw())
+```
+
+```{r Method Sample}
+graphing <- subset(Aged_Usable_I, Sex != "U")
+
+ggplot(graphing, aes(x = Sex, y=Age_At_Death, fill = Sex)) +
+  geom_violin(aes(alpha = 0.6)) +
+  geom_jitter(width = 0.15) +
+  theme(
+    panel.grid.minor.y = element_line(colour = "grey")
+  ) +
+  guides(
+    alpha = "none",
+    colour = "none",
+    fill = "none"
+  ) +
+  labs(
+    x="Sex",
+    y="Age (Months)"
+  ) +
+  scale_y_continuous(breaks = seq(0,230,10)) +
+  scale_fill_manual(values = c("#f1a340", "#998ec3")) +
+  scale_color_manual(values = c("#000000"))
+
+ggsave(path = "Finished Products", filename = "Sample_Ages.png")
+```
+
+```{r Method Sample 2}
+graphing <- subset(Aged_Usable_I_Hist, Sex != "U")
+graphing <- subset(graphing, bins != "1")
+g1 <- c("1","F", 0)
+g2 <- c("1","M",0)
+graphing <- rbind(graphing, g1, g2)
+graphing$bins <- as.numeric(graphing$bins)
+graphing$n <- as.numeric(graphing$n)
+graphing2 <- subset(Aged_Usable_I, Age_At_Death <= 12)
+graphing2 <- graphing2 %>%
+   mutate(bins  = cut(Age_At_Death, breaks = c(seq(0,12,1)))) %>%
+   count(Sex, bins) %>%
+  complete(bins, nesting(Sex), fill = list(n = 0)) %>%
+ arrange(Sex, bins) %>%
+mutate(n = ifelse(Sex =="M", n*(-1), n*1))
+graphing2 <- subset(graphing2, Sex != "U")
+graphing2$bins <- as.numeric(graphing2$bins)
+
+ggplot(graphing, aes(x=bins, y=n, fill=Sex)) +
+  geom_bar(stat = "identity", width = 1, colour = "#000000")+
+  theme(
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(colour = "#838383"),
+    panel.grid.minor.y = element_line(colour = "#838383"),
+    axis.title.x = element_blank()
+  )+ 
+  coord_flip() +
+  labs(
+    x = "Age at Death (Years)"
+  ) +
+  scale_fill_manual(values = c("#f1a340", "#998ec3")) +
+  scale_x_continuous(breaks = seq(1,19,1), limits = c(0.5,20), expand = c(0,0)) +
+  scale_y_continuous(breaks = seq(-7,7, 1), limits = c(-7,7), expand = c(0,0)) +
+  scale_color_manual(values = c("#000000"))
+
+ggsave(path = "Finished Products", filename = "Method_demog01.jpg")
+  
+ggplot(graphing2, aes(x=bins, y=n, fill=Sex)) +
+  geom_bar(stat = "identity", width = 1, colour = "#000000")+
+  theme(
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(colour = "#838383"),
+    panel.grid.minor.y = element_line(colour = "#838383"),
+    axis.title.x = element_blank()
+  )+ 
+  coord_flip() +
+  labs(
+    x = "Age at Death (Months)"
+  ) +
+  scale_fill_manual(values = c("#f1a340", "#998ec3")) +
+  scale_x_continuous(breaks = seq(1,12,1), limits = c(0.5,12.5), expand = c(0,0)) +
+  scale_y_continuous(breaks = seq(-7,7, 1), limits = c(-7,7), expand = c(0,0)) +
+  scale_color_manual(values = c("#000000"))
+
+ggsave(path = "Finished Products", filename = "Method_demog02.jpg")
+
+
+```
+
